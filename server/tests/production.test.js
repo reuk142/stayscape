@@ -1,0 +1,52 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+
+test('production HTTP, migrations, repeatable seed and security policy', {skip: !process.env.TEST_DATABASE_URL && 'Set TEST_DATABASE_URL to run production smoke tests'}, async t => {
+  const schema='stayscape_test_'+randomBytes(8).toString('hex');
+  const password=randomBytes(24).toString('base64url');
+  const admin=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL});
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  Object.assign(process.env, {DATABASE_URL:process.env.TEST_DATABASE_URL,PGSCHEMA:schema,JWT_SECRET:randomBytes(48).toString('hex'),NODE_ENV:'production',APP_ORIGIN:'https://stayscape.example',SEED_DEMO_PASSWORD:password});
+  const {pool}=await import('../src/db.js');
+  let server;
+  t.after(async()=>{
+    if(server)await new Promise(resolve=>server.close(resolve));
+    await pool.end();
+    await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+    await admin.end();
+  });
+  const cwd=fileURLToPath(new URL('../',import.meta.url));
+  const run=promisify(execFile);
+  await run(process.execPath,['scripts/migrate.js'],{cwd,env:process.env});
+  const first=await run(process.execPath,['scripts/seed.js'],{cwd,env:process.env});
+  const second=await run(process.execPath,['scripts/seed.js'],{cwd,env:process.env});
+  assert.match(first.stdout,/Added 8 sample listings/);
+  assert.match(second.stdout,/Added 0 sample listings/);
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM listings')).rows[0].count,8);
+  const {app}=await import('../src/app.js');
+  server=app.listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));
+  const url=`http://127.0.0.1:${server.address().port}`;
+  const listings=await fetch(url+'/api/listings');
+  assert.equal(listings.status,200); assert.equal((await listings.json()).total,8);
+  const login=await fetch(url+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json',Origin:process.env.APP_ORIGIN},body:JSON.stringify({email:'host@stayscape.demo',password})});
+  assert.equal(login.status,200); assert.match(login.headers.get('set-cookie'),/Secure/);
+  const blocked=await fetch(url+'/api/auth/logout',{method:'POST',headers:{Origin:'https://other.example'}});
+  assert.equal(blocked.status,403);
+  if(existsSync(fileURLToPath(new URL('../../client/dist/index.html',import.meta.url)))) {
+    const page=await fetch(url+'/stays/example-deep-link');
+    const html=await page.text();
+    assert.equal(page.status,200); assert.match(html,/<div id="root">/);
+    const policy=page.headers.get('content-security-policy');
+    assert.match(policy,/script-src 'self'/); assert.match(policy,/frame-ancestors 'none'/);
+    const asset=html.match(/src="([^"]+\.js)"/)[1];
+    assert.equal((await fetch(url+asset)).status,200);
+    assert.ok(!page.headers.has('x-powered-by'));
+  } else t.diagnostic('Frontend static smoke check skipped: run npm run build first');
+});

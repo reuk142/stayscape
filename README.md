@@ -1,0 +1,97 @@
+# StayScape
+
+StayScape is a full-stack travel listing and booking demo built with React, Vite, Express, PostgreSQL, JWT cookies, Cloudinary uploads, and Leaflet/OpenStreetMap. It supports guest and host accounts, searchable listings, owner-only listing management, wishlists, availability, booking history, reviews after completed stays, and host reservations/analytics. Payments are simulated: the app never collects or processes money.
+
+## Requirements
+
+- Windows 10/11 with PowerShell
+- Node.js 20.19+ and npm
+- PostgreSQL 18 (a local installation is sufficient)
+- Cloudinary credentials only if you want to upload images; HTTPS image URLs work without them
+
+## Set up on Windows
+
+Run these commands from the `StayScape` project folder:
+
+```powershell
+npm install
+npm run install:all
+Copy-Item .\server\.env.example .\server\.env
+```
+
+Create a local database (run `psql` as a PostgreSQL user permitted to create databases):
+
+```powershell
+psql -U postgres -c "CREATE DATABASE stayscape;"
+```
+
+Edit `.\server\.env` and set a PostgreSQL connection string, a private JWT secret (at least 32 characters), and a seed-host password (at least 12 characters). For example, keep the URI in this format and replace the placeholder locally:
+
+```text
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/stayscape
+JWT_SECRET=replace-with-a-random-secret-of-at-least-32-characters
+SEED_DEMO_PASSWORD=choose-a-private-password-of-at-least-12-characters
+NODE_ENV=development
+```
+
+Alternatively, configure PostgreSQL with `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, and `PGPASSWORD`. Set `PGSSL=true` only when the database provider requires TLS. Never commit `server\.env` or share its credentials.
+
+Apply the SQL migrations and insert sample listings:
+
+```powershell
+npm run migrate
+npm run seed
+```
+
+The demo host is `host@stayscape.demo`; its password is the private value you set in `SEED_DEMO_PASSWORD`. Seed can be rerun safely; it does not change the password of an existing host account.
+
+Start client and API together:
+
+```powershell
+npm run dev
+```
+
+Open `http://localhost:5173`. The Vite development server proxies `/api` to `http://localhost:5000`. To build the frontend, run `npm run build`; run both backend and client unit tests with `npm test`.
+
+## Optional image uploads
+
+Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `server\.env`, then restart the API. Uploads accept JPEG, PNG, and WebP files up to 5 MB. Without Cloudinary, hosts can use public HTTPS image links.
+
+## Features and routes
+
+| Route | Function |
+| --- | --- |
+| `/` | Search, categories, price/guest filters, sorting, and listing cards |
+| `/stays/:id` | Property details, map, reviews, date selection, and booking |
+| `/login`, `/register` | Guest/host registration and sign-in |
+| `/profile` | Update your display name and see account details |
+| `/trips` | Guest booking history, cancellation, and completed-stay reviews |
+| `/wishlist` | Saved listings |
+| `/host` | Host listings, reservation history, and dashboard analytics |
+| `/host/new`, `/host/edit/:id` | Create and edit host-owned listings |
+
+## Database and booking consistency
+
+Schema migrations are versioned SQL files in `server\migrations`. `npm run migrate` tracks applied files in `schema_migrations`. PostgreSQL is the source of truth for users, listings, wishlists, bookings, occupied nights, and reviews.
+
+Booking creation inserts the booking and each occupied night in one database transaction. `booking_nights` has a primary key on `(listing_id, stay_date)`, so overlapping concurrent reservations cannot both commit. Check-out is exclusive; cancellation changes the booking state and releases its night rows in one transaction.
+
+## Security notes
+
+- Passwords are hashed with bcrypt. JWT sessions are signed and stored in `HttpOnly`, `SameSite=Lax` cookies.
+- Protected routes enforce host role and listing ownership in the API.
+- Booking dates and listing fields are validated on the server; SQL uses parameterized queries.
+- Write requests use same-origin checks, and auth routes are rate limited.
+- Uploads verify file signatures, MIME type, and size before sending images to Cloudinary.
+- The app is a classroom demo, not a production booking service. It has no real payments, email verification, password recovery, or admin console. Configure a strict CSP, production TLS, backups, and operational controls before any public deployment.
+
+## Demo walk-through
+
+1. Browse listings, search a destination, and save a property.
+2. Register a guest and book future dates; verify the confirmation in **Your trips**.
+3. Try to reserve the same dates from another guest account; the API must reject the overlap.
+4. Register a host account, create a listing, and review its reservations on the host dashboard.
+5. Cancel a future guest booking and verify the dates become available.
+6. Reviews are accepted only after a confirmed stay's checkout date.
+
+No real money or payment data is involved.
