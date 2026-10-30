@@ -7,8 +7,8 @@ if (secret.length < 32 || /REPLACE_|replace-with/i.test(secret)) {
   console.error('Set a private JWT_SECRET of at least 32 characters in server/.env');
   process.exit(1);
 }
-if (process.env.NODE_ENV === 'production' && !process.env.APP_ORIGIN) {
-  console.error('Set APP_ORIGIN to the HTTPS application origin in production');
+if (process.env.NODE_ENV === 'production' && !(process.env.APP_ORIGIN || process.env.RENDER_EXTERNAL_URL)) {
+  console.error('Set APP_ORIGIN or deploy on a platform that provides RENDER_EXTERNAL_URL');
   process.exit(1);
 }
 try {

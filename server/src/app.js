@@ -36,7 +36,7 @@ app.use('/api', (req, res, next) => {
   if (origin) {
     try {
       const url = new URL(origin);
-      const configured = process.env.APP_ORIGIN;
+      const configured = process.env.APP_ORIGIN || process.env.RENDER_EXTERNAL_URL;
       const allowed = configured ? origin === configured : url.host === req.get('host') || (!isProd && url.hostname === 'localhost' && url.port === '5173');
       if (!allowed) return res.status(403).json({ error: 'Cross-site requests are not allowed' });
     } catch { return res.status(403).json({ error: 'Invalid request origin' }); }

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: stayscape
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm ci --prefix server && npm ci --prefix client && npm run build --prefix client
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PGSSL
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stayscape-db
+          property: connectionString
+
+databases:
+  - name: stayscape-db
+    databaseName: stayscape
+    user: stayscape
+    plan: free
