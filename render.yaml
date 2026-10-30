@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm ci --prefix server && npm ci --prefix client && npm run build --prefix client
-    startCommand: npm start
+    startCommand: npm run seed --prefix server && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -12,6 +12,8 @@ services:
       - key: PGSSL
         value: "false"
       - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_DEMO_PASSWORD
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
